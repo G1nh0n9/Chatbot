@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>개발 파트너 테오</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background:#0b0f14; color:#e6edf3; }
+    header { display:flex; align-items:center; gap:12px; padding:16px 20px; background:#111827; border-bottom:1px solid #1f2937; position:sticky; top:0;}
+    header img { width:28px; height:28px; border-radius:6px; }
+    header h1 { font-size:16px; margin:0; font-weight:600; }
+    main { max-width:920px; margin: 0 auto; padding: 16px; }
+    .msg { padding: 12px 14px; border-radius: 12px; margin: 8px 0; white-space: pre-wrap; }
+    .user { background:#1f2937; align-self:flex-end; }
+    .bot { background:#0e1a24; border:1px solid #1f2937; }
+    .chat { display:flex; flex-direction:column; gap:6px; }
+    .typing{ opacity:0.8; font-style:italic; }
+    form { display:flex; gap:8px; position:sticky; bottom:0; background:#0b0f14; padding:12px 0; }
+    textarea { flex:1; background:#0e1620; color:#e6edf3; border:1px solid #1f2937; border-radius:10px; padding:10px; min-height:48px; resize:vertical;}
+    button { background:#2563eb; color:white; border:none; padding: 0 16px; border-radius:10px; font-weight:600; }
+    .hint { color:#9ca3af; font-size:12px; margin-top:4px;}
+    code, pre { background:#0e1620; padding:2px 6px; border-radius:6px; }
+    /* 말풍선+아바타 행 */
+    .row { display: flex; align-items: flex-end; gap: 8px; margin: 8px 0; }
+    .row.user { flex-direction: row-reverse; }          /* 사용자 메시지는 오른쪽 정렬    */
+    .avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover;     background:#334155; }
+
+    /* 말풍선 */
+    .bubble { max-width: 70%; padding: 12px 14px; border-radius: 12px; white-space:     pre-wrap; }
+    .row.bot  .bubble { background:#0e1a24; border:1px solid #1f2937; }
+    .row.user .bubble { background:#1f2937; }
+
+    /* 타이핑 표시 */
+    .typing .bubble { font-style: italic; opacity: .9; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="/static/images/teo.png" alt="teo">
+    <h1>개발 파트너 테오</h1>
+  </header>
+  <main>
+    <div id="chat" class="chat"></div>
+    <form id="f">
+      <textarea id="m" placeholder="에러 메시지나 궁금한 점을 적어주세요. (예: pip install 오류)"></textarea>
+      <button type="submit">전송</button>
+    </form>
+  </main>
+<script>
+const chat = document.getElementById('chat');
+const form = document.getElementById('f');
+const m = document.getElementById('m');
+const btn = form.querySelector('button');
+
+m.addEventListener('keydown', (e) => {
+  if (e.isComposing || e.key === 'Process') return; // 한글 등 IME 조합 중이면 무시
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    // 폼 전송 트리거 (우리의 submit 핸들러가 실행됨)
+    if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+    } else {
+      form.dispatchEvent(new Event('submit', { cancelable: true }));
+    }
+  }
+  // Shift+Enter는 기본 동작(개행) 그대로 두면 됨
+});
+
+function avatarSrc(who){
+  // 각 프로필 이미지 경로 지정
+  // - 테오(봇): /static/images/teo.png (이미 있음)
+  // - 사용자:   /static/images/user.png (새로 넣어주세요)
+  return who === 'user' ? '/static/images/brian.png' : '/static/images/teo.png';
+}
+
+function addMsg(text, who){
+  // 한 줄(row): [아바타] [말풍선]
+  const row = document.createElement('div');
+  row.className = 'row ' + (who === 'user' ? 'user' : 'bot');
+
+  const img = document.createElement('img');
+  img.className = 'avatar';
+  img.src = avatarSrc(who);
+  img.alt = who;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+
+  row.appendChild(img);
+  row.appendChild(bubble);
+  chat.appendChild(row);
+  window.scrollTo(0, document.body.scrollHeight);
+
+  return { row, bubble }; // 후속 갱신을 위해 반환
+}
+
+// 타이핑 애니메이션: "작성중 . → .. → ..."
+function addTyping(){
+  const { row, bubble } = addMsg('작성중 .', 'bot');
+  row.classList.add('typing');
+  let dots = 1;
+  const id = setInterval(() => {
+    dots = (dots % 3) + 1;
+    bubble.textContent = '작성중 ' + '.'.repeat(dots);
+  }, 500);
+
+  return {
+    stopAndReplace: (text) => {
+      clearInterval(id);
+      row.classList.remove('typing');
+      bubble.textContent = text;
+    },
+    stopAndError: (msg) => {
+      clearInterval(id);
+      row.classList.remove('typing');
+      bubble.textContent = msg || '[오류] 전송 실패';
+    }
+  };
+}
+
+let pending = false;
+let lastResponseId = null; // 이전 응답 ID 추적
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (pending) return;
+
+  const text = m.value.trim();
+  if (!text) return;
+
+  pending = true;
+  addMsg(text, 'user');           // 사용자 말풍선 + 아바타
+  m.value = '';
+  btn.disabled = true;
+  btn.textContent = '전송 중...';
+
+  const typing = addTyping();     // 테오 타이핑 말풍선 + 아바타
+
+  try {
+    const requestData = { message: text };
+    // 이전 응답 ID가 있으면 포함
+    if (lastResponseId) {
+      requestData.previous_response_id = lastResponseId;
+    }
+
+    const r = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestData)
+    });
+    const js = await r.json();
+    
+    if (js.ok) {
+      typing.stopAndReplace(js.reply);
+      // 새로운 응답 ID 저장
+      lastResponseId = js.response_id;
+    } else {
+      typing.stopAndError('[오류] ' + (js.error || '전송 실패'));
+    }
+  } catch (err) {
+    typing.stopAndError('[오류] 네트워크 문제 또는 서버 응답 지연');
+  } finally {
+    pending = false;
+    btn.disabled = false;
+    btn.textContent = '전송';
+  }
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1 @@
+# 실행: 가상환경 생성 → .env 설정 → python app.py
