@@ -23,11 +23,10 @@ def makeup_response(message: str, response_id: str = None):
     return dict_to_namespace(data)
 
 class Chatbot:
-    def __init__(self, model: Model, developer_role: str, instruction: str, function_instruction: str, max_rounds: int = 40):
+    def __init__(self, model: Model, developer_role: str, instruction: str, max_rounds: int = 40):
         self.model = model
         self.developer_role = developer_role
         self.instruction = instruction
-        self.function_instruction = function_instruction
         self.max_rounds = max_rounds
         self.max_token_size = 16 * 1024
 
