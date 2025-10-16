@@ -2,3 +2,6 @@ flask
 flask-cors
 python-dotenv
 openai>=1.42.0
+requests
+beautifulsoup4
+lxml

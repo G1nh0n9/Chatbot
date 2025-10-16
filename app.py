@@ -3,13 +3,13 @@ from flask_cors import CORS
 import os
 from common import model
 from chatbot import Chatbot
-from characters import developer_role, instruction
+from characters import developer_role, instruction, function_instruction
 
 app = Flask(__name__)
 CORS(app)
 
 # 전역 챗봇 인스턴스 (상태를 저장하지 않으므로 하나만 있으면 됨)
-chatbot = Chatbot(model.basic, developer_role, instruction)
+chatbot = Chatbot(model, developer_role, instruction, function_instruction)
 
 @app.route("/")
 def index():

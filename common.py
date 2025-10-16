@@ -7,7 +7,7 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class Model:
-    basic: str = "gpt-5-mini"
+    basic: str = "gpt-4.1-mini"
     advanced: str = "gpt-5"
 
 model = Model()
