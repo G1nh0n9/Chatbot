@@ -9,6 +9,39 @@ import json
 from typing import Dict, Any, List, Optional
 import re
 
+def search_pokemon_rankings() -> Dict[str, Any]:
+    """웹에서 포켓몬 랭킹 정보를 가져옵니다"""
+
+    try:
+        headers ={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'ko-KR,ko;q=0.8,en-US;q=0.5,en;q=0.3',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        # Pokemon Home으로부터 역공학된 주소
+        url = "https://resource.pokemon-home.com/battledata/t_rankmatch.html"
+
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 200:
+            html_content = response.text
+            return {
+                    'content': f"[포켓몬 공식 통계 검색 결과 HTML]\n검색 URL: {url}\n\n{html_content}",
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+        else:
+            return {
+                'content': '포켓몬 랭킹 데이터를 가져올 수 없습니다.',
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+    except Exception as e:
+        return {
+            'content': f"포켓몬 통계 오류: {str(e)}",
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+
 def search_web(query: str) -> Dict[str, Any]:
     """웹에서 정보를 검색합니다 - 원본 HTML을 그대로 반환해서 OpenAI가 분석하게 함"""
     try:
@@ -370,6 +403,17 @@ def get_stock_info(symbol: str) -> Dict[str, Any]:
 FUNCTION_DEFINITIONS = [
     {
         "type": "function",
+        "name": "search_pokemon_rankings",
+        "description": "포켓몬 공식 랭킹 통계 정보를 가져옵니다. 포켓몬 랭킹, 사용률, 메타 관련 질문에 사용합니다.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False
+        }
+    },
+    {
+        "type": "function",
         "name": "search_web",
         "description": "웹에서 정보를 검색합니다. 사용자가 특정 정보를 찾거나 검색을 요청할 때 사용합니다.",
         "parameters": {
@@ -438,6 +482,7 @@ FUNCTION_DEFINITIONS = [
 
 # 함수 이름과 실제 함수 매핑
 FUNCTION_MAP = {
+    "search_pokemon_rankings": search_pokemon_rankings,
     "search_web": search_web,
     "get_weather": get_weather,
     "get_news": get_news,
