@@ -13,23 +13,59 @@ def search_pokemon_rankings() -> Dict[str, Any]:
     """웹에서 포켓몬 랭킹 정보를 가져옵니다"""
 
     try:
-        headers ={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'ko-KR,ko;q=0.8,en-US;q=0.5,en;q=0.3',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-        }
         # Pokemon Home으로부터 역공학된 주소
         url = "https://resource.pokemon-home.com/battledata/t_rankmatch.html"
 
-        response = requests.get(url, headers=headers, timeout=15)
+        # 세션 생성
+        session = requests.Session()
+
+        # User-Agent (PowerShell 덤프와 동일)
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+        })
+
+        cookie_val = "faCZdSaSjmGpidTWyKHD/L4D1jixtHRGKmPN/diTxyJ+gcWYuPuucxTMylBdlU6OhhNQB5Bjo7y1wIrkhxafF0ZXXOaW4qD3rAd2BOd5AU6MqQIw4jVYKuVD9QDp"
+
+        session.cookies.set("AWSALB", cookie_val, domain="api.battle.pokemon-home.com", path="/")
+        session.cookies.set("AWSALBCORS", cookie_val, domain="api.battle.pokemon-home.com", path="/")
+
+        
+        headers = {
+            "accept": "application/json, text/javascript, */*; q=0.01",
+            "accept-encoding": "gzip, deflate, br, zstd",
+            "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+            "authorization": "Bearer",
+            "cache-control": "no-cache",
+            "countrycode": "305",
+            "langcode": "8",
+            "origin": "https://resource.pokemon-home.com",
+            "pragma": "no-cache",
+            "priority": "u=1, i",
+            "referer": "https://resource.pokemon-home.com/",
+            "sec-ch-ua": '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";     v="141"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
+            "Content-Type": "application/json",
+        }
+        json_body = {"soft": "Sc"}
+        # 요청 보내기
+        season_list_url = "https://api.battle.pokemon-home.com/tt/cbd/competition/rankmatch/list"
+        response = session.post(season_list_url, headers=headers, json=json_body)
         if response.status_code == 200:
-            html_content = response.text
+            max_key = max(response.json()['list'].keys(), key=int)
+            print('> recent_season:', max_key)
+            season_id = list(response.json()['list'][max_key].keys())[-1]
+            cid = response.json()['list'][max_key][season_id]['cId']
+            rst = response.json()['list'][max_key][season_id]['rst']
+            ts2 = response.json()['list'][max_key][season_id]['ts2']
+            response = session.get(f"https://resource.pokemon-home.com/battledata/ranking/scvi/{cid}/{rst}/{ts2}/pokemon")
+
             return {
-                    'content': f"[포켓몬 공식 통계 검색 결과 HTML]\n검색 URL: {url}\n\n{html_content}",
-                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                'content': f"포켓몬 전국도감 번호로 표기된 자료 입니다.\n{response.json()[:20]}",
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
         else:
             return {
