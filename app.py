@@ -1,9 +1,13 @@
-from flask import Flask, render_template, request, jsonify
+import atexit
+from flask import Flask, render_template, request, jsonify, g
 from flask_cors import CORS
 import os
 from common import model
 from chatbot import Chatbot
 from characters import developer_role, instruction
+# dotenv 설정 로드
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -39,6 +43,24 @@ def chat():
         "reply": reply,
         "response_id": response_id
     })
+
+@atexit.register
+def shutdown():
+    """서버 종료 시 대화 내용 저장"""
+    try:
+        chatbot.save_chat()
+        print("Chat history saved on shutdown.")
+    except Exception:
+       import traceback; traceback.print_exc()
+
+@app.teardown_appcontext
+def _persist_on_teardown(exc):
+    # 너무 자주 쓰기 싫다면 내부에서 'dirty' 플래그로 조건부 저장
+    try:
+        chatbot.save_chat()
+        print("Chat history saved on teardown.")
+    except Exception:
+        import traceback; traceback.print_exc()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
