@@ -13,7 +13,7 @@ app = Flask(__name__)
 CORS(app)
 
 # 전역 챗봇 인스턴스 (상태를 저장하지 않으므로 하나만 있으면 됨)
-chatbot = Chatbot(model, developer_role, instruction)
+chatbot = Chatbot(model, developer_role, instruction, user='브라이언', assistant='테오')
 
 @app.route("/")
 def index():

@@ -1,8 +1,9 @@
 from typing import Optional
 from types import SimpleNamespace
+import time
+import threading
 from common import client, gpt_num_tokens, Model
 import json
-import uuid
 from function_tools import FUNCTION_DEFINITIONS, FUNCTION_MAP
 from memory_manager import MemoryManager
 
@@ -15,26 +16,36 @@ def dict_to_namespace(data):
         return data
 
 def makeup_response(message: str, response_id: str = None):
-    if not response_id:
-        response_id = f"error_{uuid.uuid4().hex[:16]}"
     data = {
         "output": [ { "content": [ { "text": message } ], "role": "assistant" } ],
         "output_text": message,
-        "usage": {"total_tokens": 0},
-        "id": response_id,
+        "usage": {"total_tokens": 0}
     }
     return dict_to_namespace(data)
 
 class Chatbot:
-    def __init__(self, model: Model, developer_role: str, instruction: str, max_rounds: int = 40):
+    def __init__(self, model: Model, developer_role: str, instruction: str, max_rounds: int = 40, **kwargs):
         self.model = model
         self.developer_role = developer_role
         self.instruction = instruction
         self.max_rounds = max_rounds
         self.max_token_size = 16 * 1024
-        self.memoryManager = MemoryManager()
+        self.memoryManager = MemoryManager(**kwargs)
+        self.user = kwargs['user']
+        self.assistant = kwargs['assistant']
         self.context = [{'role': 'developer', 'content': developer_role}]
         self.context.extend(self.memoryManager.restore_chat())
+        # 데몬 구동
+        bg_thread = threading.Thread(target=self.background_task)
+        bg_thread.daemon = True
+        bg_thread.start()
+
+    def background_task(self):
+        while True:
+            self.save_chat()
+            self.context = [ {'role': v['role'], 'content': v['content'], 'saved': True} for v in self.context ]
+            self.memoryManager.build_memory()
+            time.sleep(3600)     # 1시간마다 반복
 
     def _as_api_messages(self):
         api_msgs = []
@@ -45,7 +56,7 @@ class Chatbot:
                 api_msgs.append({"role": role, "content": content})
         return api_msgs
 
-    def chat(self, message: str, previous_response_id: Optional[str] = None) -> SimpleNamespace:
+    def _chat(self, message: str, previous_response_id: Optional[str] = None) -> SimpleNamespace:
         """메시지를 처리하고 응답 생성 - OpenAI Function Calling 지원"""
         try:
             print(f"Chat called with message: {message}, previous_response_id: {previous_response_id}")
@@ -114,9 +125,31 @@ class Chatbot:
             print(f"Chat error: {error_msg}")
             return makeup_response(error_msg)
     
+    def chat(self, message: str, previous_response_id: Optional[str] = None) -> SimpleNamespace:
+        memory_instruction = self.retrieve_memory()
+        self.context[-1]['content'] += memory_instruction if memory_instruction is not None else ''
+        return self._chat(message, previous_response_id)
+    
+    def retrieve_memory(self):
+        user_message = self.context[-1]['content']
+        if not self.memoryManager.needs_memory(user_message):
+            return
+
+        memory = self.memoryManager.retrieve_memory(user_message)  
+        if memory is not None:
+            whisper = (f'[귓속말]\n{self.assistant} 기억 속 대화 내용이야. 앞으로 이 내용을 참조하면서 답해줘. '
+                       f'알마 전에 나누었던 대화라는 점을 자연스럽게 말해줘:\n{memory}')
+            self.add_user_message(whisper)
+            return None
+        else:
+            return '[기억이 안난다고 답할 것!]'
+        
+    def add_user_message(self, message: str):
+        self.context.append({'role': 'user', 'content': message, 'saved': False})
+
     def save_chat(self):
         """대화 내용을 저장"""
-        self.memoryManager.save_chat(self.context)
+        self.context =self.memoryManager.save_chat(self.context)
 
 
 
