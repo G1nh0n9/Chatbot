@@ -126,14 +126,16 @@ class Chatbot:
             return makeup_response(error_msg)
     
     def chat(self, message: str, previous_response_id: Optional[str] = None) -> SimpleNamespace:
-        memory_instruction = self.retrieve_memory()
-        self.context[-1]['content'] += memory_instruction if memory_instruction is not None else ''
+        print(f'> [chat 메서드] 입력된 message: {message}')
+        memory_instruction = self.retrieve_memory(message)
+        if memory_instruction is not None:
+            message += memory_instruction
         return self._chat(message, previous_response_id)
     
-    def retrieve_memory(self):
-        user_message = self.context[-1]['content']
+    def retrieve_memory(self, user_message):
+        print(f'> [retrieve_memory] 실제 검색할 메시지: {user_message}')
         if not self.memoryManager.needs_memory(user_message):
-            return
+            return None
 
         memory = self.memoryManager.retrieve_memory(user_message)  
         if memory is not None:

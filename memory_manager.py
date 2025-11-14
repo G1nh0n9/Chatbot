@@ -24,7 +24,7 @@ embedding_model = 'text-embedding-ada-002'
 
 # 아래 사용자 질의가 오늘 이전의 기억에 대해 묻는 것인지 참/거짓으로만 응답하세요.
 NEEDS_MEMORY_TEMPLATE = """
-아래 사용자 질의가 오늘 이전의 기억에 대해 묻는 것인지 TRUE/FALSE으로만 응답하세요. 특히 사용자 질의중에 시간에 관련된 단어가 포함되어있으면 주의깊게 살피세요
+아래 사용자 질의가 오늘 이전의 기억에 대해 묻는 것인지 TRUE/FALSE으로만 응답하세요. 현재 대화맥락에서 더 과거를 의미하는 경우에는 기억을 찾을 필요가 있으니 TRUE로 응답하는것을 권장합니다.
 ```
 {message}
 """
@@ -67,41 +67,87 @@ class MemoryManager:
         print('search_result', search_result)
         return search_result['summary']
     
-    def search_vector_db(self, message):
+    def search_vector_db(self, message, vector_threshold=0.7):
+        print('=' * 80)
+        print('> [Vector DB 검색]')
+        print(f'> 검색 메시지: {message}')
+        
         query_vector = ( 
             client.embeddings.create(input=message, model=embedding_model).data[0].embedding
         )
-        results = pinecone_index.query(top_k=1, vector=query_vector, include_metadata=True)
-        id, score = results['matches'][0]['id'], results['matches'][0]['score']
-        print('> id', id, 'score', score)
-        return id if score > 0.7 else None
+        print(f'> 임베딩 벡터 생성 완료 (차원: {len(query_vector)})')
+        
+        results = pinecone_index.query(top_k=3, vector=query_vector, include_metadata=True)
+        print(f'> 검색 결과 수: {len(results["matches"])}')
+        
+        # 임계값을 통과한 모든 후보 수집
+        candidates = []
+        for i, match in enumerate(results['matches'], 1):
+            print(f'  [{i}] ID: {match["id"]}, Score: {match["score"]:.4f}')
+            if 'metadata' in match:
+                print(f'      메타데이터: {match["metadata"]}')
+            
+            if match['score'] > vector_threshold:
+                candidates.append({'id': match['id'], 'score': match['score']})
+                print(f'      → 벡터 임계값({vector_threshold}) 통과 ✓')
+            else:
+                print(f'      → 벡터 임계값({vector_threshold}) 미달 ✗')
+        
+        print(f'> 벡터 임계값 통과 후보 수: {len(candidates)}')
+        print('=' * 80)
+        return candidates
     
     def filter(self, message, memory, threshhold=0.6):
+        print('=' * 80)
+        print('> [질문과 대화 요약 간 유사도 계산]')
+        print(f'> 질문: {message}')
+        print(f'> 대화 요약: {memory[:200]}...' if len(memory) > 200 else f'> 대화 요약: {memory}')
+        print(f'> 임계값(threshold): {threshhold}')
+        
         try:
             response = client.responses.create(
                 model=model.advanced,
                 input=[
                     {'role': 'developer', 'content': MEASURING_SIMILARITY_SYSTEM_ROLE},
-                    {'role': 'user',   'content': f'{{"statement1": {message}, "statement2": {memory}}}'},
+                    {'role': 'user',   'content': f'{{"statement1": "{message}", "statement2": "{memory}"}}'},
                 ],
             )
-            prob = json.loads(response.output_text)['probability']
-            print('> filter prob:', prob)
+            response_text = response.output_text
+            print(f'> API 응답: {response_text}')
+            
+            prob = json.loads(response_text)['probability']
+            print(f'> 계산된 유사도(probability): {prob}')
+            print(f'> 임계값 통과 여부: {"통과 ✓" if prob >= threshhold else "실패 ✗"}')
+            
         except Exception as e:
-            print('> filter error:', e)
+            print(f'> filter error: {e}')
             prob = 0
+            print(f'> 에러로 인한 기본값 설정: {prob}')
+        
+        print('=' * 80)
         return prob >= threshhold
 
     def retrieve_memory(self, message):
-        vector_id = self.search_vector_db(message)
-        if not vector_id:
+        candidates = self.search_vector_db(message)
+        if not candidates:
+            print('> 벡터 검색 결과 없음')
             return None
 
-        memory = self.search_mongo_db(vector_id)
-        if self.filter(message, memory):
-            return memory
-        else:
-            return None
+        print(f'> {len(candidates)}개 후보에 대해 유사도 필터 검사 시작')
+        
+        # 모든 후보를 filter로 검사
+        for i, candidate in enumerate(candidates, 1):
+            print(f'\n> [후보 {i}/{len(candidates)}] ID: {candidate["id"]}, Vector Score: {candidate["score"]:.4f}')
+            memory = self.search_mongo_db(candidate['id'])
+            
+            if self.filter(message, memory):
+                print(f'> ✓ 최종 선택됨: ID={candidate["id"]}')
+                return memory
+            else:
+                print(f'> ✗ 유사도 필터 통과 실패, 다음 후보 검사...')
+        
+        print('> 모든 후보가 유사도 필터를 통과하지 못함')
+        return None
 
     def needs_memory(self, message):
         print('> needs_memory check for message:', message)
