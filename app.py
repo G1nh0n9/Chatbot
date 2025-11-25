@@ -13,7 +13,18 @@ app = Flask(__name__)
 CORS(app)
 
 # 전역 챗봇 인스턴스 (상태를 저장하지 않으므로 하나만 있으면 됨)
-chatbot = Chatbot(model, developer_role, instruction, user='브라이언', assistant='테오')
+# api_type 파라미터 추가: "responses" (기본값) 또는 "assistant" 선택 가능
+# assistant_id: 기존 Assistant를 사용할 경우 ID 지정
+chatbot = Chatbot(
+    model=model, 
+    developer_role=developer_role, 
+    instruction=instruction, 
+    user='브라이언', 
+    assistant='테오',
+    api_type="assistant",
+    #api_type="responses"  # "responses" 또는 "assistant" 선택
+    # assistant_id="asst_xxx"  # Assistant API 사용 시 기존 Assistant ID (선택사항)
+)
 
 @app.route("/")
 def index():
@@ -63,4 +74,4 @@ def _persist_on_teardown(exc):
         import traceback; traceback.print_exc()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5070")), debug=True)
